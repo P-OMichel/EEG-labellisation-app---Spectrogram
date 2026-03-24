@@ -1,0 +1,11 @@
+When new mask are created, spectrogram must be added to each eeg segment and mask ensemble. 
+For that use the 'create_mask_spectro_files.py' file
+
+Then, these data can be converted into dataset. 
+For that use the 'update_features_dataset.py' file
+
+
+
+SUMMARY:
+1. run 'create_mask_spectro_files.py' file
+1. run 'update_features_dataset.py' file

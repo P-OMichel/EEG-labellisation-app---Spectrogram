@@ -1,0 +1,31 @@
+model:
+  name: baseline_specseg
+  kwargs:
+    num_classes: 10
+    ch: 64
+data:
+  x_spec_path: X_Y_dataset/X_spec.npy
+  y_path: X_Y_dataset/Y.npy
+  test_size: 0.2
+  val_size: 0.2
+train:
+  batch_size: 16
+  lr: 0.001
+  epochs: 100
+  early_stop_patience: 10
+  # loss:
+  #   name: ce
+  # loss:
+  #   name: focal_dice
+  #   kwargs:
+  #     gamma: 2.0
+  loss:
+    name: hierarchical
+    kwargs:
+      gamma: 2.0
+      bg_class: 0
+save:
+  out_dir: DL/runs/baseline_specseg
+
+
+

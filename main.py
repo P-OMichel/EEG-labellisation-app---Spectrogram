@@ -53,7 +53,7 @@ def spectrogram(
     fs,
     nperseg_factor=1,
     noverlap_factor=0.9,
-    nfft_factor=2,
+    nfft_factor=1,
     detrend=False,
     scaling="psd",
     f_cut=45,
@@ -307,7 +307,7 @@ class EEGLabeler(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("EEG window viewer + spectrogram + overlay + EEG->mask labeling")
-        self.resize(1200, 900)
+        self.resize(900, 900)
 
         # Fixed fs UI default
         self.fs: float = 128.0
@@ -720,6 +720,7 @@ class EEGLabeler(QtWidgets.QMainWindow):
         a, b = self._window_bounds_samples()
         b = min(b, len(self.eeg))
         self.sig_win = self.eeg[a:b].copy()
+        self.sig_win = self.sig_win - np.median(self.sig_win)
         self.t_sig = np.arange(len(self.sig_win), dtype=float) / float(self.fs)
 
         f, t, Sxx = spectrogram(self.sig_win, self.fs)
@@ -767,6 +768,7 @@ class EEGLabeler(QtWidgets.QMainWindow):
 
         # x range
         self.plot_signal.setXRange(0.0, float(self.window_size_s), padding=0.02)
+        self.plot_signal.setYRange(-100, 100, padding=0.02)
         self.plot_mask.setYRange(-0.5, MASK_MAX + 0.5, padding=0.02)
 
     def _update_spectrogram_image(self):
@@ -777,8 +779,13 @@ class EEGLabeler(QtWidgets.QMainWindow):
 
         finite = np.isfinite(Sxx_db)
         if np.any(finite):
-            pdown, pup = np.percentile(Sxx_db[finite], [50, 95])
+            pdown, pup = np.percentile(Sxx_db[finite], [50, 100])
             self.img_item.setImage(Sxx_db, autoLevels=False, levels=(float(pdown) - 1, float(pup) + 1))
+        # Sxx_db = np.log2(np.maximum(self.Sxx, 1e-20))
+
+        # finite = np.isfinite(Sxx_db)
+        # if np.any(finite):
+        #     self.img_item.setImage(Sxx_db, autoLevels=False, levels=(-4, 8))
         else:
             self.img_item.setImage(Sxx_db, autoLevels=True)
 

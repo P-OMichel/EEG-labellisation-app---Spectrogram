@@ -1,0 +1,23 @@
+model:
+  name: resattn_aniso_unet_temporal_tcn
+  kwargs:
+    num_classes: 10
+    base_ch: 32
+    tcn_hidden: 128
+    tcn_layers: 3
+data:
+  x_spec_path: X_Y_dataset/X_spec.npy
+  y_path: X_Y_dataset/Y.npy
+  test_size: 0.2
+  val_size: 0.2
+train:
+  batch_size: 8
+  lr: 0.001
+  epochs: 150
+  early_stop_patience: 20
+  loss:
+    name: focal_dice
+    kwargs:
+      gamma: 2.0
+save:
+  out_dir: DL/runs/resattn_aniso_unet_temporal__tcn_focaldice
