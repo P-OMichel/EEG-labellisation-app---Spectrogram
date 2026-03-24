@@ -55,7 +55,7 @@ class AppConfig:
     # A bundle is a folder containing: config.json, model.pt, stats.json
     runs_dir: str = "DL/runs"
     default_bundle: Optional[str] = None  # if None, picks the first available in runs_dir
-    device: str = "cuda"  # will fall back to cpu if unavailable
+    device: str = "cud"  # will fall back to cpu if unavailable
 
     # Optional lags | NOTE: should be same as for training
     lags: tuple[int, ...] = (1, 2)
@@ -689,44 +689,47 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.threshold_spin.setFixedWidth(90)
         controls.addWidget(self.threshold_spin)
 
-        # model bundle selection + reload
-        controls.addSpacing(16)
-        controls.addWidget(QtWidgets.QLabel("Model bundle:"))
-        self.model_combo = QtWidgets.QComboBox()
-        self.model_combo.setMinimumWidth(260)
-        controls.addWidget(self.model_combo)
-        self.btn_browse_bundle = QtWidgets.QPushButton("Browse…")
-        controls.addWidget(self.btn_browse_bundle)
-
-        self.btn_reload_model = QtWidgets.QPushButton("Load selected")
-        controls.addWidget(self.btn_reload_model)
-
-        self.lbl_model = QtWidgets.QLabel("model: (not loaded)")
-        self.lbl_model.setStyleSheet("color:#666;")
-        controls.addWidget(self.lbl_model)
-
+        # file loaded
         controls.addStretch(1)
         self.lbl_status = QtWidgets.QLabel("No file loaded.")
         self.lbl_status.setMinimumWidth(280)
         controls.addWidget(self.lbl_status)
 
         vbox.addLayout(controls)
+        
 
         # Mask nudge row
-        mask_controls = QtWidgets.QHBoxLayout()
+        controls_2 = QtWidgets.QHBoxLayout()
         self.btn_minus = QtWidgets.QPushButton("Selected -1")
         self.btn_plus = QtWidgets.QPushButton("Selected +1")
-        mask_controls.addWidget(self.btn_minus)
-        mask_controls.addWidget(self.btn_plus)
+        controls_2.addWidget(self.btn_minus)
+        controls_2.addWidget(self.btn_plus)
 
         self.lbl_dirty = QtWidgets.QLabel("")
-        mask_controls.addWidget(self.lbl_dirty)
+        controls_2.addWidget(self.lbl_dirty)
 
-        mask_controls.addStretch(1)
+        controls_2.addStretch(1)
         tip = QtWidgets.QLabel("Editable mask: Ctrl-click select; Shift-drag box select; drag vertically to set class")
         tip.setStyleSheet("color:#666;")
-        mask_controls.addWidget(tip)
-        vbox.addLayout(mask_controls)
+        controls_2.addWidget(tip)
+
+        # model bundle selection + reload
+        controls_2.addSpacing(16)
+        controls_2.addWidget(QtWidgets.QLabel("Model bundle:"))
+        self.model_combo = QtWidgets.QComboBox()
+        self.model_combo.setMinimumWidth(260)
+        controls_2.addWidget(self.model_combo)
+        self.btn_browse_bundle = QtWidgets.QPushButton("Browse…")
+        controls_2.addWidget(self.btn_browse_bundle)
+
+        self.btn_reload_model = QtWidgets.QPushButton("Load selected")
+        controls_2.addWidget(self.btn_reload_model)
+
+        self.lbl_model = QtWidgets.QLabel("model: (not loaded)")
+        self.lbl_model.setStyleSheet("color:#666;")
+        controls_2.addWidget(self.lbl_model) 
+
+        vbox.addLayout(controls_2)
 
         # Plots
         self.plot_signal = pg.PlotWidget(title="EEG (current window)")
