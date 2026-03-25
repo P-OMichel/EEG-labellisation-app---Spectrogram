@@ -4,8 +4,8 @@ model:
     num_classes: 10
     base_ch: 32
 data:
-  x_spec_path: X_Y_dataset/X_spec.npy
-  y_path: X_Y_dataset/Y.npy
+  x_spec_path: X_Y_dataset/X_spec_24_03_2026.npy
+  y_path: X_Y_dataset/Y_24_03_2026.npy
   test_size: 0.2
   val_size: 0.2
 train:

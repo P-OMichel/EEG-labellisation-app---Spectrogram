@@ -107,5 +107,5 @@ class ResAttnAnisoUNetTemporalTCN(nn.Module):
         x = self.up2(x, x2)
         x = self.up3(x, x1)
         x = self.proj(x)
-        x = x.mean(dim=2)
+        x = x.mean(dim=2) # can be replace by mean + max for instance
         return self.head(x)
