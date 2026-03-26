@@ -14,7 +14,12 @@ from DL.src.io.bundle import save_bundle
 from DL.src.training.trainer_fusion import fit
 
 # import fusion model modules so they register themselves
-from DL.src.models import fusion_models  # adapt to your actual module name
+# 1D
+from DL.src.models import unet_bottleneck_tcn_1D, unet_output_tcn_1D, unet_2tcn_1D
+# 2D 
+from DL.src.models import specseg_cnn, unet_temporal, resattn_unet, conv2_temporal_head, resattn_unet_tcn  
+# fusion
+from DL.src.models import fusion
 
 
 def load_config(path: str) -> dict:

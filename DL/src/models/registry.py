@@ -68,11 +68,11 @@ def build_branch_from_config(branch_cfg: Dict[str, Any]):
         # load already trained model
         bundle_dir = branch_cfg_file['save']['out_dir']
         model = load_trained_model_from_bundle(bundle_dir, device_pref = 'cuda')
-        print(f'load trained model from {bundle_dir} associated to config {branch_cfg['config']}')
+        print(f"load trained model from {bundle_dir} associated to config {branch_cfg['config']}")
 
     else:
         model = build_model(branch_cfg_file)
-        print(f'create untrained model from {branch_cfg['config']}')
+        print(f"create untrained model from {branch_cfg['config']}")
 
     if branch_cfg.get("freeze", False): # no more training of the branch if freeze is True
         for p in model.parameters():

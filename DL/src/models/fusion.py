@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from .registry import register_model
 
 
 class LateFusionSegmentation(nn.Module):
@@ -64,7 +64,7 @@ class LateFusionSegmentation(nn.Module):
             "alpha": alpha,
         }
     
-
+@register_model("fusion_intermediate")
 class IntermediateFusionSegmentation(nn.Module):
     def __init__(
         self,
@@ -125,7 +125,7 @@ class IntermediateFusionSegmentation(nn.Module):
 
         return out
 
-    
+@register_model("fusion_gate")
 class GatedIntermediateFusionSegmentation(nn.Module):
     def __init__(
         self,

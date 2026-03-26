@@ -1,5 +1,5 @@
 model:
-  name: resattn_aniso_unet_temporal
+  name: resattn_aniso_unet_temporal_tcn
   kwargs:
     num_classes: 10
     base_ch: 32
