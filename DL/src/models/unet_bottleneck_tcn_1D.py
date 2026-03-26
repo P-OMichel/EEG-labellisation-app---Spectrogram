@@ -163,24 +163,30 @@ class UNet1DTCN(nn.Module):
         self.outc = nn.Conv1d(base_ch, base_ch, kernel_size=1)
         self.head = TemporalHead1D(base_ch, num_classes)
 
-    def forward(self, x):
-        # x: (B, 1, T)
-        x1 = self.inc(x)       # (B, base_ch, T)
-        x2 = self.down1(x1)    # (B, 2*base_ch, T/2)
-        x3 = self.down2(x2)    # (B, 4*base_ch, T/4)
-        x4 = self.down3(x3)    # (B, 8*base_ch, T/8)
+    def forward_features(self, x):
+        # x: (B,1,T)
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
 
-        x = self.tcn(x4)       # bottleneck temporal reasoning
+        x = self.tcn(x4)
 
-        x = self.up1(x, x3)    # (B, 4*base_ch, ~T/4)
-        x = self.up2(x, x2)    # (B, 2*base_ch, ~T/2)
-        x = self.up3(x, x1)    # (B, base_ch, ~T)
+        x = self.up1(x, x3)
+        x = self.up2(x, x2)
+        x = self.up3(x, x1)
 
-        x = self.outc(x)       # (B, base_ch, ~T)
-        x = self.head(x)       # (B, num_classes, ~T)
+        x = self.outc(x)  # (B, base_ch, T)
 
-        # force output length to match mask length
+        # ensure correct temporal length
         if x.size(-1) != self.target_len:
             x = F.interpolate(x, size=self.target_len, mode="linear", align_corners=False)
 
-        return x
+        return x  
+    
+    def forward_logits_from_features(self, feats):
+        return self.head(feats)
+    
+    def forward(self, x):
+        feats = self.forward_features(x)
+        return  self.forward_logits_from_features(feats)

@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from sklearn.model_selection import train_test_split
 
-from DL.src.datasets.spectrogram_dataset import SpectrogramSegDataset, compute_norm_stats, apply_norm
+from DL.src.datasets.make_dataset import SpectrogramSegDataset, compute_norm_stats, apply_norm
 from DL.src.models.registry import build_model
 from DL.src.io.bundle import save_bundle
 from DL.src.training.trainer_2D import fit

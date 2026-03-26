@@ -79,33 +79,52 @@ class TemporalHeadTCN(nn.Module):
         return self.out(self.tcn(x))
     
 
+
 @register_model("resattn_aniso_unet_temporal_tcn")
 class ResAttnAnisoUNetTemporalTCN(nn.Module):
     def __init__(self, num_classes: int = 10, base_ch: int = 32, tcn_hidden: int = 128, tcn_layers: int = 3):
         super().__init__()
+
         self.stem = nn.Sequential(
             nn.Conv2d(1, base_ch, 3, padding=1),
             nn.BatchNorm2d(base_ch),
             nn.ReLU(inplace=True),
             ResBlock2D(base_ch),
         )
+
         self.down1 = Down2D(base_ch, base_ch*2)
         self.down2 = Down2D(base_ch*2, base_ch*4)
         self.down3 = Down2D(base_ch*4, base_ch*8)
+
         self.up1 = UpAttn2D(base_ch*8, base_ch*4, base_ch*4)
         self.up2 = UpAttn2D(base_ch*4, base_ch*2, base_ch*2)
         self.up3 = UpAttn2D(base_ch*2, base_ch, base_ch)
+
         self.proj = nn.Conv2d(base_ch, base_ch, 1)
+
         self.head = TemporalHeadTCN(base_ch, num_classes, tcn_hidden, tcn_layers)
 
-    def forward(self, x):
+    def forward_features(self, x):
+        # x: (B,1,F,T)
+
         x1 = self.stem(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x4 = self.down3(x3)
+
         x = self.up1(x4, x3)
         x = self.up2(x, x2)
         x = self.up3(x, x1)
-        x = self.proj(x)
-        x = x.mean(dim=2) # can be replace by mean + max for instance
-        return self.head(x)
+
+        x = self.proj(x)        # (B, base_ch, F, T)
+
+        x = x.mean(dim=2)       #  collapse frequency → (B, base_ch, T)
+
+        return x  
+    
+    def forward_logits_from_features(self, feats):
+        return self.head(feats)
+
+    def forward(self, x):
+        feats = self.forward_features(x)
+        return self.forward_logits_from_features(feats)

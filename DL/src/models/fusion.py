@@ -65,26 +65,7 @@ class LateFusionSegmentation(nn.Module):
         }
     
 
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-# NOTE: Is fusion code here training all or 1d and 2d networks are already trained ?
-
 class IntermediateFusionSegmentation(nn.Module):
-    """
-    Intermediate fusion:
-      feat1d = model_1d.forward_features(x1d)   -> (B, C1, T)
-      feat2d = model_2d.forward_features(x2d)   -> (B, C2, T)
-
-    Then:
-      proj1d -> hidden
-      proj2d -> hidden
-      concat
-      fusion conv block
-      classifier
-    """
     def __init__(
         self,
         model_1d: nn.Module,
@@ -116,25 +97,21 @@ class IntermediateFusionSegmentation(nn.Module):
 
         self.head = nn.Conv1d(fusion_ch, num_classes, kernel_size=1)
 
-        if self.use_aux_heads:
-            self.aux_head_1d = nn.Conv1d(feat1d_ch, num_classes, kernel_size=1)
-            self.aux_head_2d = nn.Conv1d(feat2d_ch, num_classes, kernel_size=1)
-
     def forward(self, x1d, x2d):
-        feat1d = self.model_1d.forward_features(x1d)  # (B, C1, T1)
-        feat2d = self.model_2d.forward_features(x2d)  # (B, C2, T2)
+        feat1d = self.model_1d.forward_features(x1d)
+        feat2d = self.model_2d.forward_features(x2d)
 
         if feat1d.size(-1) != self.target_len:
             feat1d = F.interpolate(feat1d, size=self.target_len, mode="linear", align_corners=False)
         if feat2d.size(-1) != self.target_len:
             feat2d = F.interpolate(feat2d, size=self.target_len, mode="linear", align_corners=False)
 
-        z1 = self.proj1d(feat1d)  # (B, fusion_ch, T)
-        z2 = self.proj2d(feat2d)  # (B, fusion_ch, T)
+        z1 = self.proj1d(feat1d)
+        z2 = self.proj2d(feat2d)
 
-        fused = torch.cat([z1, z2], dim=1)   # (B, 2*fusion_ch, T)
-        fused = self.fusion(fused)           # (B, fusion_ch, T)
-        logits = self.head(fused)            # (B, num_classes, T)
+        fused = torch.cat([z1, z2], dim=1)
+        fused = self.fusion(fused)
+        logits = self.head(fused)
 
         out = {
             "logits": logits,
@@ -143,36 +120,29 @@ class IntermediateFusionSegmentation(nn.Module):
         }
 
         if self.use_aux_heads:
-            out["logits_1d_aux"] = self.aux_head_1d(feat1d)
-            out["logits_2d_aux"] = self.aux_head_2d(feat2d)
+            out["logits_1d_aux"] = self.model_1d.forward_logits_from_features(feat1d)
+            out["logits_2d_aux"] = self.model_2d.forward_logits_from_features(feat2d)
 
         return out
+
     
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
 class GatedIntermediateFusionSegmentation(nn.Module):
-    """
-    Same as intermediate fusion, but learns a per-time-step, per-channel gate
-    between 1D and 2D projected features.
-    """
     def __init__(
         self,
         model_1d: nn.Module,
         model_2d: nn.Module,
-        feat1d_ch: int,
-        feat2d_ch: int,
-        fusion_ch: int = 128,
         num_classes: int = 10,
         target_len: int = 297,
+        feat1d_ch: int = 32,
+        feat2d_ch: int = 128,
+        fusion_ch: int = 128,
+        use_aux_heads: bool = True,
     ):
         super().__init__()
         self.model_1d = model_1d
         self.model_2d = model_2d
         self.target_len = target_len
+        self.use_aux_heads = use_aux_heads
 
         self.proj1d = nn.Conv1d(feat1d_ch, fusion_ch, kernel_size=1)
         self.proj2d = nn.Conv1d(feat2d_ch, fusion_ch, kernel_size=1)
@@ -201,17 +171,24 @@ class GatedIntermediateFusionSegmentation(nn.Module):
         if feat2d.size(-1) != self.target_len:
             feat2d = F.interpolate(feat2d, size=self.target_len, mode="linear", align_corners=False)
 
-        z1 = self.proj1d(feat1d)  # (B, fusion_ch, T)
-        z2 = self.proj2d(feat2d)  # (B, fusion_ch, T)
+        z1 = self.proj1d(feat1d)
+        z2 = self.proj2d(feat2d)
 
-        gate = self.gate(torch.cat([z1, z2], dim=1))  # (B, fusion_ch, T)
+        gate = self.gate(torch.cat([z1, z2], dim=1))
         fused = gate * z1 + (1.0 - gate) * z2
         fused = self.refine(fused)
 
         logits = self.head(fused)
-        return {
+
+        out = {
             "logits": logits,
             "gate": gate,
             "feat_1d": feat1d,
             "feat_2d": feat2d,
         }
+
+        if self.use_aux_heads:
+            out["logits_1d_aux"] = self.model_1d.forward_logits_from_features(feat1d)
+            out["logits_2d_aux"] = self.model_2d.forward_logits_from_features(feat2d)
+
+        return out

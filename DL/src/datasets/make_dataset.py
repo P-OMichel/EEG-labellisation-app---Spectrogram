@@ -39,6 +39,26 @@ class SpectrogramSegDataset(Dataset):
         y = torch.from_numpy(self.y[idx])  # (T,)
         return x, y
 
+
+class FusionSegDataset(Dataset):
+    def __init__(self, x1d: np.ndarray, x2d: np.ndarray, y: np.ndarray):
+        if len(x1d) != len(x2d) or len(x1d) != len(y):
+            raise ValueError(
+                f"Length mismatch: len(x1d)={len(x1d)}, len(x2d)={len(x2d)}, len(y)={len(y)}"
+            )
+        self.x1d = x1d
+        self.x2d = x2d
+        self.y = y
+
+    def __len__(self):
+        return len(self.y)
+
+    def __getitem__(self, idx):
+        x1d = torch.from_numpy(self.x1d[idx]).float()
+        x2d = torch.from_numpy(self.x2d[idx]).float()
+        y   = torch.from_numpy(self.y[idx]).long()
+        return x1d, x2d, y
+
 @dataclass
 class NormalizationStats:
     mean: float

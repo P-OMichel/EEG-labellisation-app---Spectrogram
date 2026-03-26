@@ -10,31 +10,35 @@ model:
 
 branches:
   model_1d:
-    name: "unet1d_tcn"
-    kwargs:
-      num_classes: 10
-      base_ch: 32
-      target_len: 297
-    checkpoint:
-      use: true
-      path: "DL/runs/1D_unet_bottleneck_tcn_focaldice1/best_model.pt"
-      strict: true
-      key: "model_state_dict"
+    config: '1D_unet_bottleneck_tcn.yaml'
+    pretrained: True 
     freeze: false
     lr: 0.0001
 
   model_2d:
-    name: "resattn_aniso_unet_temporal_tcn"
-    kwargs:
-      num_classes: 10
-      base_ch: 32
-      tcn_hidden: 128
-      tcn_layers: 3
-      target_len: 297
-    checkpoint:
-      use: true
-      path: "DL/runs/2D_resattn_tcn/best_model.pt"
-      strict: true
-      key: "model_state_dict"
+    config: 'resattn_unet_temporal_focal_dice1.yaml'
+    pretrained: True
     freeze: false
     lr: 0.0001
+
+data:
+  x_spec_path: X_Y_dataset/X_spec_24_03_2026.npy
+  y_path: X_Y_dataset/Y_24_03_2026.npy
+  test_size: 0.2
+  val_size: 0.2
+train:
+  batch_size: 16
+  lr: 0.001
+  epochs: 150
+  early_stop_patience: 20
+  loss:
+    name: focal_dice1
+    kwargs:
+      gamma: 2.0
+  aux_loss:
+    use: true
+    weight_1d: 0.3
+    weight_2d: 0.3
+
+save:
+  out_dir: DL/runs/fusion_1D_unet_2D_res_attn
