@@ -61,8 +61,8 @@ def _prepare_fusion_inputs(
 def _get_fusion_param_groups(model: torch.nn.Module, cfg: Dict[str, Any]):
     param_groups = []
 
-    lr_1d = float(cfg["branches"]["model_1d"].get("lr", cfg["train"].get("lr", 1e-3)))
-    lr_2d = float(cfg["branches"]["model_2d"].get("lr", cfg["train"].get("lr", 1e-3)))
+    lr_1d = float(cfg["model"]["branches"]["model_1d"].get("lr", cfg["train"].get("lr", 1e-3)))
+    lr_2d = float(cfg["model"]["branches"]["model_2d"].get("lr", cfg["train"].get("lr", 1e-3)))
     lr_fusion = float(cfg["train"].get("lr", 1e-3))
 
     if hasattr(model, "model_1d") and model.model_1d is not None:
@@ -132,8 +132,8 @@ def build_fusion_losses_from_configs(
         class_weights=class_weights,
     ).to(device)
 
-    branch1_cfg_path = fusion_cfg["branches"]["model_1d"]["config"]
-    branch2_cfg_path = fusion_cfg["branches"]["model_2d"]["config"]
+    branch1_cfg_path = fusion_cfg["model"]["branches"]["model_1d"]["config"]
+    branch2_cfg_path = fusion_cfg["model"]["branches"]["model_2d"]["config"]
 
     branch1_cfg = load_yaml_config(branch1_cfg_path)
     branch2_cfg = load_yaml_config(branch2_cfg_path)

@@ -95,8 +95,7 @@ def build_fusion(config: Dict[str, Any]) -> nn.Module:
       - builds model_2d
       - injects them into the fusion model constructor
     """
-    if "model" not in config:
-        raise KeyError("Config must contain a 'model' section.")
+
     if "branches" not in config:
         raise KeyError("Config must contain a 'branches' section.")
 
