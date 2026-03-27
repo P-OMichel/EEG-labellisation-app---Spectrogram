@@ -1,0 +1,27 @@
+{
+  "model": {
+    "name": "fusion_gate",
+    "kwargs": {
+      "num_classes": 10,
+      "target_len": 297,
+      "feat1d_ch": 32,
+      "feat2d_ch": 32,
+      "fusion_ch": 32,
+      "use_aux_heads": true
+    },
+    "branches": {
+      "model_1d": {
+        "config": "DL/experiments/1D_unet_bottleneck_tcn.yaml",
+        "pretrained": true,
+        "freeze": false,
+        "lr": 0.0001
+      },
+      "model_2d": {
+        "config": "DL/experiments/resattn_unet_temporal_focal_dice1.yaml",
+        "pretrained": true,
+        "freeze": false,
+        "lr": 0.0001
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "model": {
+    "name": "unet1d_tcn_attn",
+    "kwargs": {
+      "num_classes": 10,
+      "base_ch": 32
+    }
+  }
+}

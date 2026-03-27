@@ -134,8 +134,8 @@ class GatedIntermediateFusionSegmentation(nn.Module):
         num_classes: int = 10,
         target_len: int = 297,
         feat1d_ch: int = 32,
-        feat2d_ch: int = 128,
-        fusion_ch: int = 128,
+        feat2d_ch: int = 32,
+        fusion_ch: int = 32,
         use_aux_heads: bool = True,
     ):
         super().__init__()

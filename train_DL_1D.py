@@ -14,7 +14,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
 # NOTE:   Import model modules so they register themselves| if not registered load config will not work
-from DL.src.models import unet_bottleneck_tcn_1D, unet_output_tcn_1D, unet_2tcn_1D
+from DL.src.models import unet_bottleneck_tcn_1D, unet_output_tcn_1D, unet_2tcn_1D, unet_bottleneck_tcn_att_1D
 
 
 def load_config(path: str) -> dict:

@@ -5,7 +5,7 @@ model:
     target_len: 297
     feat1d_ch: 32
     feat2d_ch: 32
-    fusion_ch: 128
+    fusion_ch: 32
     use_aux_heads: true
 
   branches:
@@ -42,4 +42,4 @@ train:
     weight_2d: 0.3
 
 save:
-  out_dir: DL/runs/fusion_1D_unet_2D_res_attn
+  out_dir: DL/runs/fusion_1D_unet_2D_res_attn_32
