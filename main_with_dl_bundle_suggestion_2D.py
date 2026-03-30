@@ -1098,6 +1098,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         # ---  ESTIMATE IF REDUCTION SCALING OF EEG IS NECESSARY ---
         sqrt_med = np.sqrt(np.median(self.sig_win**2))
         factor = 25 / sqrt_med
+        print('factor:', factor)
         # NOTE: uncomment to have only segments of high amplitude normalised
         if factor <= 1:
             self.sig_win = self.sig_win * factor

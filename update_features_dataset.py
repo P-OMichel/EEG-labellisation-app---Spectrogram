@@ -14,10 +14,10 @@ from ML.functions.feature_extractor import extract_features_time_series, extract
 #================================ DIRECTORIES =============================
 data_mask_spectro_dir = 'data_mask_spectro/' # path to where labelled data is stored
 
-name_saved_eeg = 'X_eeg_24_03_2026' # suffix of file name where features are stored
-name_saved_spectro = 'X_spec_24_03_2026' # suffix of file name where features are stored
-name_saved_mask = 'Y_24_03_2026' # suffix of file name where features are stored
-name_saved_features = 'X_features_24_03_2026' # suffix of file name where features are stored
+name_saved_eeg = 'X_eeg_30_03_2026' # suffix of file name where features are stored
+name_saved_spectro = 'X_spec_30_03_2026' # suffix of file name where features are stored
+name_saved_mask = 'Y_30_03_2026' # suffix of file name where features are stored
+name_saved_features = 'X_features_30_03_2026' # suffix of file name where features are stored
 
 #================================ Functions =============================
 def load_mask_with_spectrograms(path: str | Path) -> dict:
@@ -55,6 +55,13 @@ def convert_labelled_data_to_dataset(dir):
 
                 signal = y[start_i : end_i]
                 t_signal = np.arange(len(signal)) / fs
+
+                # NOTE: Normalize all segments
+                sqrt_med = np.sqrt(np.median(signal**2))
+                factor = 25 / sqrt_med
+                # NOTE: uncomment to have only segments of high amplitude normalised
+                if factor <= 1:
+                    signal = signal * factor
 
                 mask = current_window['mask']
 
