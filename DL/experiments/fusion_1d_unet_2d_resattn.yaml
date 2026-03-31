@@ -22,9 +22,9 @@ model:
       lr: 0.0001
 
 data:
-  x_eeg_path: X_Y_dataset/X_eeg_24_03_2026.npy
-  x_spec_path: X_Y_dataset/X_spec_24_03_2026.npy
-  y_path: X_Y_dataset/Y_24_03_2026.npy
+  x_eeg_path: X_Y_dataset/X_eeg_30_03_2026.npy
+  x_spec_path: X_Y_dataset/X_spec_30_03_2026.npy
+  y_path: X_Y_dataset/Y_30_03_2026.npy
   test_size: 0.2
   val_size: 0.2
 train:

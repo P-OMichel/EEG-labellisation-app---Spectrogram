@@ -1,0 +1,9 @@
+Fusion:
+
+1D model:
+    1D_unet_bottleneck_tcn_att_focaldice1
+
+2D model:
+    resattn_aniso_unet_temporal__tcn_focaldice
+
+    unet_temporal_focaldice1

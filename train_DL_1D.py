@@ -138,8 +138,8 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- Load dataset (same files as notebooks) ----
-    x_eeg_path = cfg["data"].get("x_spec_path", "X_Y_dataset/X_eeg_24_03_2026.npy")
-    y_path = cfg["data"].get("y_path", "X_Y_dataset/Y_24_03_2026.npy.npy")
+    x_eeg_path = cfg["data"].get("x_eeg_path", "X_Y_dataset/X_eeg_30_03_2026.npy")
+    y_path = cfg["data"].get("y_path", "X_Y_dataset/Y_30_03_2026.npy.npy")
     X = np.load(x_eeg_path)  # (N,T_eeg)
     y = np.load(y_path)       # (N,T)
 

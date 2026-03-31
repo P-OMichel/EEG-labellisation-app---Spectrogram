@@ -1,0 +1,45 @@
+model:
+  name: "fusion_gate"
+  kwargs:
+    num_classes: 10
+    target_len: 297
+    feat1d_ch: 32
+    feat2d_ch: 32
+    fusion_ch: 32
+    use_aux_heads: true
+
+  branches:
+    model_1d:
+      config: 'DL/experiments/1D_unet_bottleneck_tcn_att.yaml'
+      pretrained: True 
+      freeze: True
+      lr: 0.0001
+
+    model_2d:
+      config: 'DL/experiments/resattn_unet_temporal_tcn.yaml'
+      pretrained: True
+      freeze: True
+      lr: 0.0001
+
+data:
+  x_eeg_path: X_Y_dataset/X_eeg_30_03_2026.npy
+  x_spec_path: X_Y_dataset/X_spec_30_03_2026.npy
+  y_path: X_Y_dataset/Y_30_03_2026.npy
+  test_size: 0.2
+  val_size: 0.2
+train:
+  batch_size: 16
+  lr: 0.001
+  epochs: 150
+  early_stop_patience: 20
+  loss:
+    name: focal_dice1
+    kwargs:
+      gamma: 2.0
+  aux_loss:
+    use: true
+    weight_1d: 0.3
+    weight_2d: 0.3
+
+save:
+  out_dir: DL/runs/fusion_1D_unet_tcn_att__2D_res_attn

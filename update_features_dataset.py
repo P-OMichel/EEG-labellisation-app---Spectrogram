@@ -83,7 +83,7 @@ def convert_labelled_data_to_dataset(dir):
 
 # --- SAVE DATASET ---
 X_eeg, X_spec, Y, f_spec = convert_labelled_data_to_dataset(data_mask_spectro_dir) 
-
+print(np.shape(X_eeg), np.shape(X_spec), np.shape(Y))
 np.save('X_Y_dataset/' + name_saved_eeg, X_eeg)
 np.save('X_Y_dataset/' + name_saved_spectro, X_spec)
 np.save('X_Y_dataset/' + name_saved_mask, Y)
