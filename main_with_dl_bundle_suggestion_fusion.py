@@ -42,6 +42,8 @@ import torch
 
 from DL.src.models.registry import build_fusion
 
+from time import time
+
 
 # ---------------------------
 # CONFIG
@@ -1154,6 +1156,7 @@ class EEGLabelerWithModelFusion(QtWidgets.QMainWindow):
 
         self.model_mask = np.zeros(len(self.t_spec), dtype=int)
         if self.predictor is not None and len(self.t_spec) > 0 and self.Sxx is not None:
+            t0 = time()
             try:
                 y_pred = self.predictor.predict_mask_from_signal_and_sxx(
                     self.sig_win,
@@ -1164,7 +1167,8 @@ class EEGLabelerWithModelFusion(QtWidgets.QMainWindow):
             except Exception as e:
                 self.lbl_model.setText(f"model: inference failed ({e})")
                 self.model_mask = np.zeros(len(self.t_spec), dtype=int)
-
+            t1 = time()
+            print(f'time for prediction {t1 - t0}')
         self.mask = np.zeros(len(self.t_spec), dtype=int)
         loaded = self._load_mask_from_json_if_exists()
         if loaded is not None and len(loaded) == len(self.mask):
