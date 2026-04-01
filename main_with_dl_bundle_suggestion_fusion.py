@@ -1,31 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Merged App: EEG labeling (editable mask + autosave) + Model suggestion mask (read-only)
+EEG labeling app + read-only fusion model suggestion.
 
-You provided:
-- main.py: labeling app with editable mask points + JSON saving fileciteturn6file0
-- eeg_mask_inference_viewer.py: inference app that loads XGBoost + extracts features fileciteturn6file1
+Behavior:
+- Loads a 1D .npy EEG signal
+- Displays EEG, spectrogram, editable mask, and model-predicted mask
+- Only shows model bundles whose folder name contains 'fusion'
+- Uses BOTH the raw 1D signal window and the computed spectrogram window as model input
+- Resamples model predictions to len(t_spec) for display when needed
+- Autosaves editable masks to JSON
 
-What this merged app does:
-- Keeps your labeling workflow:
-    * EEG plot (top)
-    * Spectrogram (middle)
-    * Editable mask plot (bottom #1) with draggable points and EEG-rectangle->mask labeling
-    * Autosave per-window to JSON exactly like your main.py
-- Adds a second mask plot BELOW (bottom #2):
-    * Model-predicted mask (read-only) for the same window
-    * Same time axis (t_spec)
-    * Colored stripe + line
-    * Cannot be edited
-- When you label/correct the editable mask, the model mask stays unchanged (visual reference only)
-
-IMPORTANT:
-- You said you'll "put and load the model in the app code directly":
-  Edit CFG.model_path / CFG.scaler_path below.
-- This app expects your feature extraction functions available as:
-    from feature_extractor import extract_features_time_series, extract_features_spectrogram
-  (same as in your inference script).
+Expected bundle behavior:
+- Bundle loader exists at: DL.src.io.bundle.load_bundle
+- Saved fusion models output logits shaped (B,C,T), (B,T,C), or a dict containing 'logits'
+- stats contain mean_1d/std_1d and mean_2d/std_2d
 """
+
+from __future__ import annotations
 
 import sys
 import json
@@ -41,39 +32,46 @@ from PyQt6.QtWidgets import QGraphicsEllipseItem, QRubberBand
 from PyQt6.QtCore import QRect, QSize, QPointF
 import pyqtgraph as pg
 
+import torch
+import importlib
+import pkgutil
+
+from pathlib import Path
+import json
+import torch
+
+from DL.src.models.registry import build_fusion
+
 
 # ---------------------------
-# CONFIG | choose default parameters 
+# CONFIG
 # ---------------------------
 @dataclass
 class AppConfig:
-    # ---- UI defaults ----
     fs_default: float = 128.0
     window_size_s_default: float = 30.0
 
-    # ---- Model bundles ----
-    # A bundle is a folder containing: config.json, model.pt, stats.json
+    # Folder containing saved bundles
     runs_dir: str = "DL/runs"
-    default_bundle: Optional[str] = None  # if None, picks the first available in runs_dir
-    device: str = "cud"  # will fall back to cpu if unavailable
 
-    # Optional lags | NOTE: should be same as for training
-    lags: tuple[int, ...] = (1, 2)
+    # Only bundle folders containing this token will be shown
+    model_name_token: str = "fusion"
 
-    # Spectrogram settings | NOTE: should be same as for training 
+    default_bundle: Optional[str] = None
+    device: str = "cuda"
+
+    # Spectrogram settings for display + 2D branch inference
     f_cut_hz: float = 45.0
     nperseg_factor: float = 1.0
     noverlap_factor: float = 0.90
     nfft_factor: float = 1.0
 
 
-
 CFG = AppConfig()
 
 
-
 # ---------------------------
-# Spectrogram (window-local)
+# Spectrogram (display + inference 2D branch)
 # ---------------------------
 def spectrogram(
     y,
@@ -86,8 +84,12 @@ def spectrogram(
     f_cut=45,
 ):
     nperseg = int(nperseg_factor * fs)
+    nperseg = max(nperseg, 2)
     noverlap = int(noverlap_factor * nperseg)
+    noverlap = min(noverlap, nperseg - 1)
     nfft = int(nfft_factor * nperseg)
+    nfft = max(nfft, nperseg)
+
     window = sc.signal.windows.hamming(nperseg, sym=True)
 
     f_spectro, t_spectro, stft = sc.signal.stft(
@@ -103,7 +105,6 @@ def spectrogram(
 
     Sxx = np.abs(stft) ** 2
 
-    # cut at f_cut
     if len(f_spectro) > 1:
         df = f_spectro[1] - f_spectro[0]
         j = int(f_cut / df)
@@ -116,8 +117,8 @@ def spectrogram(
 
 def make_jet_lut(n: int = 256) -> np.ndarray:
     try:
-        from matplotlib import cm  # type: ignore
-        cmap = cm.get_cmap("jet", n)  # warning ok
+        from matplotlib import cm
+        cmap = cm.get_cmap("jet", n)
         lut = (cmap(np.linspace(0, 1, n))[:, :4] * 255).astype(np.ubyte)
         return lut
     except Exception:
@@ -149,47 +150,70 @@ def make_class_lut(colors_rgba: dict, vmax: int, n: int = 256) -> np.ndarray:
 # ---------------------------
 # Mask classes
 # ---------------------------
-MASK_CLASSES = ["ok", "alpha-sup", "IES", "gc", "shallow", "gamma", "eye artifact", "HF artifact", "large artifact", "awake"]
+MASK_CLASSES = [
+    "ok",
+    "alpha-sup",
+    "IES",
+    "gc",
+    "shallow",
+    "gamma",
+    "eye artifact",
+    "HF artifact",
+    "large artifact",
+    "awake",
+]
+
 MASK_COLORS_RGBA = {
-    0: (80, 200, 120, 220),   # ok
-    1: (120, 120, 255, 220),  # alpha-sup
-    2: (255, 170, 0, 220),    # IES
-    3: (30, 30, 30, 220),     # gc
-    4: (200, 200, 0, 220),    # shallow
-    5: (255, 0, 200, 220),    # gamma
-    6: (0, 220, 220, 220),    # eye artifact
-    7: (255, 0, 0, 220),      # HF artifact
-    8: (150, 75, 0, 220),     # large artifact
-    9: (100, 75, 0, 220),     # awake
+    0: (80, 200, 120, 220),
+    1: (120, 120, 255, 220),
+    2: (255, 170, 0, 220),
+    3: (30, 30, 30, 220),
+    4: (200, 200, 0, 220),
+    5: (255, 0, 200, 220),
+    6: (0, 220, 220, 220),
+    7: (255, 0, 0, 220),
+    8: (150, 75, 0, 220),
+    9: (100, 75, 0, 220),
 }
 MASK_MAX = max(MASK_COLORS_RGBA.keys())
 
 
-import torch
-import torch.nn.functional as F
+# ---------------------------
+# Utility functions
+# ---------------------------
+def _resample_labels_nearest(labels: np.ndarray, out_T: int) -> np.ndarray:
+    if labels.ndim != 1:
+        raise ValueError(f"Expected 1D labels, got shape {labels.shape}")
+    if len(labels) == out_T:
+        return labels.astype(int)
 
-def _resize_2d_linear(x: np.ndarray, out_F: int, out_T: int) -> np.ndarray:
-    """
-    Resize a 2D numpy array (F, T) to (out_F, out_T)
-    using bilinear interpolation (PyTorch backend).
-    """
-    if x.ndim != 2:
-        raise ValueError("Expected 2D array (F,T)")
-
-    xt = torch.from_numpy(x).float().unsqueeze(0).unsqueeze(0)  # (1,1,F,T)
-    xt = F.interpolate(
-        xt,
-        size=(out_F, out_T),
-        mode="bilinear",
-        align_corners=False
+    x_old = np.linspace(0.0, 1.0, len(labels))
+    x_new = np.linspace(0.0, 1.0, out_T)
+    idx = np.clip(
+        np.round(np.interp(x_new, x_old, np.arange(len(labels)))).astype(int),
+        0,
+        len(labels) - 1,
     )
-    return xt.squeeze(0).squeeze(0).cpu().numpy()
+    return labels[idx].astype(int)
+
+
+def _import_all_src_models():
+    try:
+        import DL.src.models
+        pkg = DL.src.models
+        for m in pkgutil.iter_modules(pkg.__path__, pkg.__name__ + "."):
+            importlib.import_module(m.name)
+    except Exception:
+        pass
+
+
+_import_all_src_models()
+
 
 # ---------------------------
-# Mask plot helpers (editable mask plot)
+# Mask plot helpers
 # ---------------------------
 class RubberbandMaskPlot(pg.PlotWidget):
-    """Shift + drag rectangle to select points. Ctrl+Shift drag to unselect."""
     def __init__(self, viewer):
         super().__init__()
         self.viewer = viewer
@@ -291,16 +315,9 @@ class DraggableMaskPoint(QGraphicsEllipseItem):
 
 
 # ---------------------------
-# EEG Rubberband selection / label on top plot
+# EEG rubberband selection / label
 # ---------------------------
 class EEGLabelRubberBandFilter(QtCore.QObject):
-    """
-    Event filter installed on plot_signal.viewport().
-    Two modes controlled by viewer:
-      - viewer._rb_zoom_active
-      - viewer._rb_label_active
-    Draws rectangle and on release either zoom or apply label.
-    """
     def __init__(self, viewer):
         super().__init__()
         self.viewer = viewer
@@ -326,15 +343,14 @@ class EEGLabelRubberBandFilter(QtCore.QObject):
         if event.type() == QtCore.QEvent.Type.MouseButtonRelease and event.button() == QtCore.Qt.MouseButton.LeftButton:
             if self.origin is None:
                 return True
+
             rect = self.rb.geometry().normalized()
             self.rb.hide()
             self.origin = None
 
-            # ignore tiny drags
             if rect.width() < 4 or rect.height() < 4:
                 return True
 
-            # map to data coords
             scene_tl = v.plot_signal.mapToScene(rect.topLeft())
             scene_br = v.plot_signal.mapToScene(rect.bottomRight())
             vb = v.plot_signal.plotItem.vb
@@ -357,34 +373,14 @@ class EEGLabelRubberBandFilter(QtCore.QObject):
 
 
 # ---------------------------
-# DL bundle predictor (HF-like)
+# Bundle predictor for fusion models only
 # ---------------------------
-# This app should NOT define architectures. It loads a trained model bundle from `runs/<bundle>/`
-# and reconstructs the architecture via your `src/` package (registry), then loads weights.
-
-from types import SimpleNamespace
-import importlib
-import pkgutil
-
-def _import_all_src_models():
-    """Import all modules under src.models so @register_model decorators populate the registry."""
-    try:
-        import DL.src.models  # noqa: F401
-        pkg = DL.src.models
-        for m in pkgutil.iter_modules(pkg.__path__, pkg.__name__ + "."):
-            importlib.import_module(m.name)
-    except Exception:
-        # If src isn't importable, user is not running from repo root.
-        pass
-
-_import_all_src_models()
-
 class ModelBundle(NamedTuple):
     model: "torch.nn.Module"
-    mean: float
-    std: float
-    spec_F: int
-    spec_T: int
+    mean_1d: float
+    std_1d: float
+    mean_2d: float
+    std_2d: float
     num_classes: int
     arch: str
     bundle_dir: str
@@ -409,17 +405,16 @@ def _get_first(d, keys, default=None):
     return default
 
 
-class DLBundledPredictor:
-    """Loads a DL model bundle from runs/ using src.io.bundle (preferred)."""
-
+class DLBundledPredictorFusion:
     def __init__(self, bundle_dir: str, device_pref: str = "cuda"):
-        import torch
         self.bundle_dir = bundle_dir
         self.device_pref = device_pref
+
         dev = "cpu"
         if device_pref.lower().startswith("cuda") and torch.cuda.is_available():
             dev = "cuda"
         self._device = torch.device(dev)
+
         self.bundle: Optional[ModelBundle] = None
         self._load()
 
@@ -428,183 +423,209 @@ class DLBundledPredictor:
         return self._device
 
     def _load(self):
-        import torch
+        bundle_dir = Path(self.bundle_dir)
 
-        # Prefer your project loader
-        try:
-            from DL.src.io.bundle import load_bundle  # type: ignore
-        except Exception as e:
-            raise ImportError(
-                "Could not import src.io.bundle.load_bundle. "
-                "Run this app from the repo root (same level as src/)."
-            ) from e
+        # -------------------------
+        # Locate bundle files
+        # -------------------------
+        config_path = bundle_dir / "config.json"
+        stats_path = bundle_dir / "stats.json"
 
-        # Call load_bundle with a few common signatures
-        try:
-            loaded = load_bundle(self.bundle_dir, device=self._device)
-        except TypeError:
-            try:
-                loaded = load_bundle(self.bundle_dir, device_str=self._device.type)
-            except TypeError:
-                try:
-                    loaded = load_bundle(self.bundle_dir, map_location=self._device)
-                except TypeError:
-                    loaded = load_bundle(self.bundle_dir)
+        # weights: support common names
+        candidate_weight_files = [
+            bundle_dir / "model.pt",
+            bundle_dir / "best_model.pt",
+            bundle_dir / "weights.pt",
+        ]
+        weights_path = None
+        for p in candidate_weight_files:
+            if p.exists():
+                weights_path = p
+                break
 
-        # The loader may return a dict or a small object. Normalize.
-        ld = _as_dict(loaded)
-        print(ld)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Missing config file: {config_path}")
+        if not stats_path.exists():
+            raise FileNotFoundError(f"Missing stats file: {stats_path}")
+        if weights_path is None:
+            raise FileNotFoundError(
+                f"Could not find model weights in {bundle_dir}. "
+                f"Tried: {[str(p.name) for p in candidate_weight_files]}"
+            )
 
-        model = _get_first(loaded, ["model"], None) or ld.get("model")
-        if model is None:
-            raise ValueError("load_bundle(...) did not return a model")
+        # -------------------------
+        # Read config + stats
+        # -------------------------
+        with open(config_path, "r", encoding="utf-8") as f:
+            full_cfg = json.load(f)
 
+        with open(stats_path, "r", encoding="utf-8") as f:
+            stats = json.load(f)
+
+        # The training script saved model_cfg=cfg["model"]
+        # so config.json may already BE the model config,
+        # or it may contain {"model": ...}. Support both.
+        if isinstance(full_cfg, dict) and "name" in full_cfg and "kwargs" in full_cfg:
+            model_cfg = full_cfg
+        elif isinstance(full_cfg, dict) and "model" in full_cfg:
+            model_cfg = full_cfg["model"]
+        else:
+            raise ValueError(
+                f"Could not infer fusion model config format from {config_path}"
+            )
+
+        # -------------------------
+        # Rebuild fusion architecture the same way as training
+        # -------------------------
+        model = build_fusion(model_cfg)
         model.to(self._device)
+
+        # -------------------------
+        # Load weights
+        # -------------------------
+        state = torch.load(weights_path, map_location=self._device)
+
+        # Some save formats store {"state_dict": ...}
+        if isinstance(state, dict) and "state_dict" in state and isinstance(state["state_dict"], dict):
+            state = state["state_dict"]
+
+        missing, unexpected = model.load_state_dict(state, strict=False)
+
         model.eval()
 
-        stats = _get_first(loaded, ["stats"], None)
-        if stats is None:
-            raise ValueError("load_bundle(...) did not return stats for normalization")        
-        mean = float(_get_first(stats, ["mean"], 0))
-        std = float(_get_first(stats, ["std"], 1))
-        spec_F = int(_get_first(loaded, ["spec_F", "F"], ld.get("spec_F", 45)))
-        spec_T = int(_get_first(loaded, ["spec_T", "T"], ld.get("spec_T", 297)))
-        num_classes = int(_get_first(loaded, ["num_classes", "C"], ld.get("num_classes", 10)))
-        arch = str(_get_first(loaded, ["arch", "model_name", "name"], ld.get("arch", "unknown")))
+        # -------------------------
+        # Stats
+        # -------------------------
+        mean_1d = float(stats.get("mean_1d", 0.0))
+        std_1d  = float(stats.get("std_1d", 1.0))
+        mean_2d = float(stats.get("mean_2d", 0.0))
+        std_2d  = float(stats.get("std_2d", 1.0))
+
+        std_1d = max(abs(std_1d), 1e-8)
+        std_2d = max(abs(std_2d), 1e-8)
+
+        num_classes = int(model_cfg.get("kwargs", {}).get("num_classes", 10))
+        arch = str(model_cfg.get("name", "unknown"))
 
         self.bundle = ModelBundle(
             model=model,
-            mean=mean,
-            std=std,
-            spec_F=spec_F,
-            spec_T=spec_T,
+            mean_1d=mean_1d,
+            std_1d=std_1d,
+            mean_2d=mean_2d,
+            std_2d=std_2d,
             num_classes=num_classes,
             arch=arch,
-            bundle_dir=self.bundle_dir,
+            bundle_dir=str(bundle_dir),
         )
 
-    def predict_mask_from_sxx(self, Sxx: np.ndarray, out_T: int) -> np.ndarray:
-        """
-        Sxx: (F,T) power spectrogram for current window (f<=f_cut)
-        out_T: number of time bins to return (len(t_spec))
-        Returns: (out_T,) int mask
-        """
-        import torch
+        if missing:
+            print("Warning - missing keys when loading fusion model:", missing)
+        if unexpected:
+            print("Warning - unexpected keys when loading fusion model:", unexpected)
+
+    def predict_mask_from_signal_and_sxx(self, sig: np.ndarray, sxx: np.ndarray, out_T: int) -> np.ndarray:
         if self.bundle is None:
             raise RuntimeError("Bundle not loaded")
 
-        # Match training preprocessing: use log10(power) then global z-norm (mean/std from stats.json)
-        x = np.log1p(Sxx + 0.00000000001)
-        x = (x - self.bundle.mean) / self.bundle.std
+        if sig.ndim != 1:
+            raise ValueError(f"Expected 1D signal, got shape {sig.shape}")
+        if sxx.ndim != 2:
+            raise ValueError(f"Expected 2D spectrogram, got shape {sxx.shape}")
 
-        # Resize to model expected shape
-        print(np.shape(x))
-        x = _resize_2d_linear(x, self.bundle.spec_F, self.bundle.spec_T)  # (F,T)
-        print(np.shape(x))
-        xt = torch.from_numpy(x[None, None, :, :]).to(self._device)       # (1,1,F,T)
+        x1d = sig.astype(np.float32)
+        x1d = (x1d - self.bundle.mean_1d) / self.bundle.std_1d
+        x1d_t = torch.from_numpy(x1d).float().unsqueeze(0).unsqueeze(0).to(self._device)
+
+        x2d = np.log1p(sxx.astype(np.float32) + 1e-11)
+        x2d = (x2d - self.bundle.mean_2d) / self.bundle.std_2d
+        x2d_t = torch.from_numpy(x2d).float().unsqueeze(0).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            y = self.bundle.model(xt)
-            print('np.shape(y)', np.shape(y))
+            y = self.bundle.model(x1d_t, x2d_t)
 
-        # Normalize output to logits (1,C,T_model)
-        if isinstance(y, (tuple, list)):
-            y = y[0]
-        if y.ndim == 3:
-            # could be (1,T,C) or (1,C,T)
-            if y.shape[1] == self.bundle.num_classes:
-                logits = y
-            elif y.shape[2] == self.bundle.num_classes:
-                logits = y.permute(0, 2, 1)
-            else:
-                logits = y.permute(0, 2, 1)
-        elif y.ndim == 4:
-            logits = y.mean(dim=2)
+        if isinstance(y, dict):
+            logits = y.get("logits", None)
+            if logits is None:
+                raise ValueError("Fusion model returned a dict without 'logits'")
+        elif isinstance(y, (tuple, list)):
+            logits = y[0]
         else:
-            raise ValueError(f"Unexpected model output shape: {tuple(y.shape)}")
+            logits = y
+
+        if logits.ndim != 3:
+            raise ValueError(f"Unexpected model output shape: {tuple(logits.shape)}")
+
+        if logits.shape[1] == self.bundle.num_classes:
+            pass
+        elif logits.shape[2] == self.bundle.num_classes:
+            logits = logits.permute(0, 2, 1)
+        else:
+            raise ValueError(
+                f"Cannot infer class dimension from output shape {tuple(logits.shape)} "
+                f"with num_classes={self.bundle.num_classes}"
+            )
 
         pred = torch.argmax(logits, dim=1).squeeze(0).detach().cpu().numpy().astype(int)
-
-        # Resample to out_T if needed (nearest)
-        if pred.shape[0] != out_T:
-            x_old = np.linspace(0.0, 1.0, pred.shape[0])
-            x_new = np.linspace(0.0, 1.0, out_T)
-            idx = np.clip(np.round(np.interp(x_new, x_old, np.arange(pred.shape[0]))).astype(int), 0, pred.shape[0]-1)
-            pred = pred[idx]
-
+        pred = _resample_labels_nearest(pred, out_T=out_T)
         return pred
 
 
 # ---------------------------
 # Main app
-
 # ---------------------------
-class EEGLabelerWithModel(QtWidgets.QMainWindow):
+class EEGLabelerWithModelFusion(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("EEG labeling + model suggestion (read-only)")
+        self.setWindowTitle("EEG labeling + fusion model suggestion (read-only)")
         self.resize(950, 1050)
 
-        # Fixed fs UI default
         self.fs: float = CFG.fs_default
 
-        # Data state
         self.eeg: Optional[np.ndarray] = None
         self.path_npy: Optional[str] = None
 
         self.window_size_s: float = CFG.window_size_s_default
         self.window_idx: int = 0
 
-        # current window arrays (time starts at 0 each window)
         self.t_sig: np.ndarray = np.array([])
         self.sig_win: np.ndarray = np.array([])
 
-        # spectrogram (window time bins)
         self.t_spec: np.ndarray = np.array([])
         self.f: np.ndarray = np.array([])
         self.Sxx: Optional[np.ndarray] = None
 
-        # editable mask aligned to t_spec
         self.mask: np.ndarray = np.array([])
         self._original_mask: Optional[np.ndarray] = None
         self._dirty: bool = False
 
-        # model mask aligned to t_spec (read-only)
         self.model_mask: np.ndarray = np.array([])
         self._model_ok: bool = False
-        self.predictor: Optional[DLBundledPredictor] = None
+        self.predictor: Optional[DLBundledPredictorFusion] = None
 
-        # mask items
         self.mask_points: List[DraggableMaskPoint] = []
         self._updating_group = False
 
-        # overlay
         self.overlay_curve_item = None
         self.threshold_line_item = None
 
-        # modes for EEG rubberband
         self._rb_zoom_active = False
         self._rb_label_active = False
 
-        # LUT for spectrogram + model mask stripe
         self._jet_lut = make_jet_lut(256)
         self._class_lut = make_class_lut(MASK_COLORS_RGBA, MASK_MAX, 256)
 
         self._build_ui()
         self._connect_signals()
 
-        # install EEG rubberband filter
         self._eeg_rb_filter = EEGLabelRubberBandFilter(self)
         self.plot_signal.viewport().installEventFilter(self._eeg_rb_filter)
 
-        # shortcuts
         QtGui.QShortcut(QtGui.QKeySequence("Left"), self, activated=self.prev_window)
         QtGui.QShortcut(QtGui.QKeySequence("Right"), self, activated=self.next_window)
         QtGui.QShortcut(QtGui.QKeySequence("Up"), self, activated=lambda: self._nudge_selected(+1))
         QtGui.QShortcut(QtGui.QKeySequence("Down"), self, activated=lambda: self._nudge_selected(-1))
         QtGui.QShortcut(QtGui.QKeySequence("Ctrl+G"), self, activated=lambda: self.spin_goto.setFocus())
 
-        # populate bundle dropdown from runs/ then load
         self._refresh_bundle_combo()
         self._try_load_model(auto=True)
 
@@ -615,7 +636,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         vbox.setContentsMargins(8, 8, 8, 8)
         vbox.setSpacing(8)
 
-        # Controls row
         controls = QtWidgets.QHBoxLayout()
 
         self.btn_load = QtWidgets.QPushButton("Load .npy…")
@@ -659,7 +679,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.spin_goto.setFixedWidth(80)
         controls.addWidget(self.spin_goto)
 
-        # zoom + label buttons
         controls.addSpacing(16)
         self.select_btn = QtWidgets.QPushButton("Select Range")
         self.select_btn.setCheckable(True)
@@ -679,7 +698,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.home_btn = QtWidgets.QPushButton("Home")
         controls.addWidget(self.home_btn)
 
-        # threshold for overlay
         controls.addSpacing(16)
         controls.addWidget(QtWidgets.QLabel("Threshold:"))
         self.threshold_spin = QtWidgets.QDoubleSpinBox()
@@ -690,16 +708,13 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.threshold_spin.setFixedWidth(90)
         controls.addWidget(self.threshold_spin)
 
-        # file loaded
         controls.addStretch(1)
         self.lbl_status = QtWidgets.QLabel("No file loaded.")
         self.lbl_status.setMinimumWidth(280)
         controls.addWidget(self.lbl_status)
 
         vbox.addLayout(controls)
-        
 
-        # Mask nudge row
         controls_2 = QtWidgets.QHBoxLayout()
         self.btn_minus = QtWidgets.QPushButton("Selected -1")
         self.btn_plus = QtWidgets.QPushButton("Selected +1")
@@ -714,12 +729,12 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         tip.setStyleSheet("color:#666;")
         controls_2.addWidget(tip)
 
-        # model bundle selection + reload
         controls_2.addSpacing(16)
-        controls_2.addWidget(QtWidgets.QLabel("Model bundle:"))
+        controls_2.addWidget(QtWidgets.QLabel("Fusion model bundle:"))
         self.model_combo = QtWidgets.QComboBox()
         self.model_combo.setMinimumWidth(260)
         controls_2.addWidget(self.model_combo)
+
         self.btn_browse_bundle = QtWidgets.QPushButton("Browse…")
         controls_2.addWidget(self.btn_browse_bundle)
 
@@ -728,11 +743,10 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
 
         self.lbl_model = QtWidgets.QLabel("model: (not loaded)")
         self.lbl_model.setStyleSheet("color:#666;")
-        controls_2.addWidget(self.lbl_model) 
+        controls_2.addWidget(self.lbl_model)
 
         vbox.addLayout(controls_2)
 
-        # Plots
         self.plot_signal = pg.PlotWidget(title="EEG (current window)")
         self.plot_signal.setLabel("bottom", "Time", units="s")
         self.plot_signal.setLabel("left", "Amplitude")
@@ -740,7 +754,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         vbox.addWidget(self.plot_signal, stretch=2)
         self.curve_sig = self.plot_signal.plot([], [], pen=pg.mkPen(width=1))
 
-        self.plot_spec = pg.PlotWidget(title="Spectrogram")
+        self.plot_spec = pg.PlotWidget(title="Spectrogram (display + fusion 2D input)")
         self.plot_spec.setLabel("bottom", "Time", units="s")
         self.plot_spec.setLabel("left", "Frequency", units="Hz")
         self.plot_spec.showGrid(x=True, y=True, alpha=0.3)
@@ -751,7 +765,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.img_item.setOpts(axisOrder="row-major")
         self.plot_spec.addItem(self.img_item)
 
-        # overlay curve + threshold line
         self.overlay_curve_item = pg.PlotDataItem(pen=pg.mkPen(width=2))
         self.plot_spec.addItem(self.overlay_curve_item)
         self.threshold_line_item = pg.InfiniteLine(
@@ -759,7 +772,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         )
         self.plot_spec.addItem(self.threshold_line_item)
 
-        # --- Editable mask plot (as in main.py) ---
         self.plot_mask = RubberbandMaskPlot(self)
         self.plot_mask.setTitle("Mask (editable) — class per spectrogram time-bin")
         self.plot_mask.setLabel("bottom", "Time", units="s")
@@ -782,13 +794,11 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
             self.plot_mask.addItem(dummy)
             dummy.setVisible(False)
 
-        # --- Model mask plot (read-only) ---
-        self.plot_model_mask = pg.PlotWidget(title="Model mask (read-only suggestion)")
+        self.plot_model_mask = pg.PlotWidget(title="Fusion model mask (read-only suggestion)")
         self.plot_model_mask.setLabel("bottom", "Time", units="s")
         self.plot_model_mask.setLabel("left", "Class")
         self.plot_model_mask.showGrid(x=True, y=True, alpha=0.3)
         self.plot_model_mask.setYRange(-0.5, MASK_MAX + 0.5)
-        # Y ticks with class names
         ticks = [(i, f"{i}: {MASK_CLASSES[i]}") for i in range(len(MASK_CLASSES))]
         self.plot_model_mask.getAxis("left").setTicks([ticks])
         vbox.addWidget(self.plot_model_mask, stretch=2)
@@ -800,7 +810,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.model_stripe.setOpacity(0.35)
         self.plot_model_mask.addItem(self.model_stripe)
 
-        # Hover on model mask: vertical cursor + class text
         self._model_hover_line = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(style=QtCore.Qt.PenStyle.DashLine))
         self._model_hover_text = pg.TextItem("", anchor=(0, 1))
         self.plot_model_mask.addItem(self._model_hover_line)
@@ -808,7 +817,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self._model_hover_line.hide()
         self._model_hover_text.hide()
 
-        # link x
         self.plot_spec.setXLink(self.plot_signal)
         self.plot_mask.setXLink(self.plot_signal)
         self.plot_model_mask.setXLink(self.plot_signal)
@@ -834,28 +842,33 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.btn_browse_bundle.clicked.connect(self._browse_bundle)
         self.model_combo.currentTextChanged.connect(lambda _: self._try_load_model(auto=True))
 
-        # Hover on model mask plot
         self.plot_model_mask.scene().sigMouseMoved.connect(self._on_model_mask_mouse_moved)
 
-    # ---------------- Model ----------------
-    
-    # ---------------- Model ----------------
+    # ---------------- Model selection ----------------
     def _list_bundle_dirs(self) -> List[str]:
         runs = CFG.runs_dir
         if not os.path.isdir(runs):
             return []
-        return sorted([p for p in os.listdir(runs) if os.path.isdir(os.path.join(runs, p))])
+
+        items = []
+        token = CFG.model_name_token.lower()
+        for p in os.listdir(runs):
+            full = os.path.join(runs, p)
+            if os.path.isdir(full) and token in p.lower():
+                items.append(p)
+        return sorted(items)
 
     def _refresh_bundle_combo(self):
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
         items = self._list_bundle_dirs()
         self.model_combo.addItems(items)
-        # default selection
+
         if CFG.default_bundle and CFG.default_bundle in items:
             self.model_combo.setCurrentText(CFG.default_bundle)
         elif items:
             self.model_combo.setCurrentIndex(0)
+
         self.model_combo.blockSignals(False)
 
     def _selected_bundle_path(self) -> Optional[str]:
@@ -867,45 +880,54 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
 
     def _browse_bundle(self):
         start_dir = os.path.abspath(CFG.runs_dir) if os.path.isdir(CFG.runs_dir) else os.getcwd()
-        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Select model bundle folder", start_dir)
+        path = QtWidgets.QFileDialog.getExistingDirectory(self, "Select fusion model bundle folder", start_dir)
         if not path:
             return
-        # If user selected a bundle inside runs/, add/select it. Otherwise load directly.
+
+        name = os.path.basename(path)
+        if CFG.model_name_token.lower() not in name.lower():
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Not a fusion bundle",
+                f"Selected folder name does not contain '{CFG.model_name_token}'."
+            )
+            return
+
         runs_abs = os.path.abspath(CFG.runs_dir)
         path_abs = os.path.abspath(path)
+
         if os.path.commonpath([runs_abs, path_abs]) == runs_abs:
             rel = os.path.relpath(path_abs, runs_abs)
             if rel not in self._list_bundle_dirs():
-                # still add it if it's directly under runs
                 self.model_combo.addItem(rel)
             self.model_combo.setCurrentText(rel)
         else:
-            # load directly (not in runs/)
             self._try_load_model(bundle_override=path_abs)
 
     def _try_load_model(self, auto: bool = False, bundle_override: Optional[str] = None):
         bundle_dir = bundle_override or self._selected_bundle_path()
         if not bundle_dir:
             if not auto:
-                self.lbl_model.setText("model: no bundle selected")
+                self.lbl_model.setText("model: no fusion bundle selected")
             self.predictor = None
             self._model_ok = False
             return
+
         try:
-            self.predictor = DLBundledPredictor(bundle_dir, device_pref=CFG.device)
+            self.predictor = DLBundledPredictorFusion(bundle_dir, device_pref=CFG.device)
             self._model_ok = True
             b = self.predictor.bundle
             if b is not None:
                 self.lbl_model.setText(
-                    f"model: OK ({os.path.basename(bundle_dir)} | {b.arch} | F×T={b.spec_F}×{b.spec_T} | dev={self.predictor.device.type})"
+                    f"model: OK ({os.path.basename(bundle_dir)} | {b.arch} | fusion 1D+2D | dev={self.predictor.device.type})"
                 )
             else:
                 self.lbl_model.setText(f"model: OK ({os.path.basename(bundle_dir)})")
         except Exception as e:
             self.predictor = None
             self._model_ok = False
-            if not auto:
-                self.lbl_model.setText(f"model: not loaded ({e})")
+            self.lbl_model.setText(f"model: not loaded ({type(e).__name__}: {e})")
+            print("Fusion bundle load error:", repr(e))
 
         if self.eeg is not None:
             self._render_current_window()
@@ -941,6 +963,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         jp = self._json_path()
         if not os.path.exists(jp):
             return None
+
         try:
             with open(jp, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -1005,6 +1028,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select 1D EEG .npy file", "", "NumPy files (*.npy)")
         if not path:
             return
+
         arr = np.load(path)
         if arr.ndim != 1:
             QtWidgets.QMessageBox.critical(self, "Error", "The .npy file must contain a 1D array.")
@@ -1091,16 +1115,17 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
 
         a, b = self._window_bounds_samples()
         b = min(b, len(self.eeg))
+
         self.sig_win = self.eeg[a:b].copy()
         self.sig_win = self.sig_win - np.median(self.sig_win)
-        self.t_sig = np.arange(len(self.sig_win), dtype=float) / float(self.fs)
 
-        # ---  ESTIMATE IF REDUCTION SCALING OF EEG IS NECESSARY ---
-        sqrt_med = np.sqrt(np.median(self.sig_win**2))
-        factor = 25 / sqrt_med
-        # NOTE: uncomment to have only segments of high amplitude normalised
-        if factor <= 1:
+        sqrt_med = np.sqrt(np.median(self.sig_win ** 2))
+        sqrt_med = max(float(sqrt_med), 1e-8)
+        factor = 25.0 / sqrt_med
+        if factor <= 1.0:
             self.sig_win = self.sig_win * factor
+
+        self.t_sig = np.arange(len(self.sig_win), dtype=float) / float(self.fs)
 
         f, t, Sxx = spectrogram(
             self.sig_win,
@@ -1115,7 +1140,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.t_spec = np.asarray(t, dtype=float)
         self.Sxx = np.asarray(Sxx, dtype=float)
 
-        # ensure (len(f), len(t))
         if self.Sxx.ndim != 2:
             QtWidgets.QMessageBox.critical(self, "Error", f"Sxx must be 2D, got ndim={self.Sxx.ndim}")
             return
@@ -1128,17 +1152,19 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
             )
             return
 
-        # --- model mask (read-only) ---
         self.model_mask = np.zeros(len(self.t_spec), dtype=int)
         if self.predictor is not None and len(self.t_spec) > 0 and self.Sxx is not None:
             try:
-                y_pred = self.predictor.predict_mask_from_sxx(self.Sxx, out_T=len(self.t_spec))
+                y_pred = self.predictor.predict_mask_from_signal_and_sxx(
+                    self.sig_win,
+                    self.Sxx,
+                    out_T=len(self.t_spec),
+                )
                 self.model_mask = np.asarray(np.clip(y_pred, 0, MASK_MAX), dtype=int)
             except Exception as e:
                 self.lbl_model.setText(f"model: inference failed ({e})")
                 self.model_mask = np.zeros(len(self.t_spec), dtype=int)
 
-        # --- editable mask load/init ---
         self.mask = np.zeros(len(self.t_spec), dtype=int)
         loaded = self._load_mask_from_json_if_exists()
         if loaded is not None and len(loaded) == len(self.mask):
@@ -1153,19 +1179,11 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self._update_status_line()
 
     def _update_plots(self):
-        # signal
         self.curve_sig.setData(self.t_sig, self.sig_win)
-
-        # spectrogram
         self._update_spectrogram_image()
-
-        # editable mask
         self._update_mask_plot()
-
-        # model mask
         self._update_model_mask_plot()
 
-        # x/y range
         self.plot_signal.setXRange(0.0, float(self.window_size_s), padding=0.02)
         self.plot_mask.setYRange(-0.5, MASK_MAX + 0.5, padding=0.02)
         self.plot_model_mask.setYRange(-0.5, 11, padding=0.02)
@@ -1198,7 +1216,6 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self.plot_spec.setYRange(y0, y0 + height, padding=0)
 
     def _update_mask_plot(self):
-        # remove old points
         for p in self.mask_points:
             try:
                 self.plot_mask.removeItem(p)
@@ -1236,28 +1253,23 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         tr.scale(dt, (MASK_MAX + 1.0))
         self.model_stripe.setTransform(tr)
 
-
-    # ---------------- Hover (model mask) ----------------
+    # ---------------- Hover ----------------
     def _on_model_mask_mouse_moved(self, pos):
-        """Show class name at mouse x-position on the model mask plot."""
         if self.t_spec is None or len(self.t_spec) == 0 or self.model_mask is None or len(self.model_mask) == 0:
-            if hasattr(self, "_model_hover_line"):
-                self._model_hover_line.hide()
-                self._model_hover_text.hide()
+            self._model_hover_line.hide()
+            self._model_hover_text.hide()
             return
 
         vb = self.plot_model_mask.getPlotItem().vb
         mousePoint = vb.mapSceneToView(pos)
         x = float(mousePoint.x())
 
-        # only show if inside current x-range
         xr = self.plot_model_mask.viewRange()[0]
         if x < xr[0] or x > xr[1]:
             self._model_hover_line.hide()
             self._model_hover_text.hide()
             return
 
-        # nearest spectrogram bin
         idx = int(np.clip(np.searchsorted(self.t_spec, x), 0, len(self.t_spec) - 1))
         if idx > 0 and abs(self.t_spec[idx] - x) > abs(self.t_spec[idx - 1] - x):
             idx -= 1
@@ -1272,11 +1284,11 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         self._model_hover_line.show()
         self._model_hover_text.show()
 
-    # ---------------- Overlay (safe) ----------------
+    # ---------------- Overlay ----------------
     def update_overlay_safe(self):
-        """If your external Functions.edge_frequency exists, plot ef curve. Otherwise hide overlay."""
         if self.Sxx is None or self.f is None or self.t_spec is None:
             return
+
         thr = float(self.threshold_spin.value())
         self.threshold_line_item.setPos(thr)
 
@@ -1288,9 +1300,8 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
         except Exception:
             self.overlay_curve_item.hide()
 
-    # ---------------- Label EEG -> mask ----------------
+    # ---------------- EEG -> mask labeling ----------------
     def _apply_eeg_label_to_mask(self, start_s: float, end_s: float):
-        """Convert EEG-time interval to nearest t_spec indices and set mask to selected class value."""
         if self.t_spec is None or len(self.t_spec) == 0:
             return
 
@@ -1308,7 +1319,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
 
         i0 = int(np.argmin(np.abs(self.t_spec - start_s)))
         i1 = int(np.argmin(np.abs(self.t_spec - end_s)))
-        lo, hi = (min(i0, i1), max(i0, i1))
+        lo, hi = min(i0, i1), max(i0, i1)
         idxs = [lo] if lo == hi else list(range(lo, hi + 1))
 
         self.mask[idxs] = class_val
@@ -1346,6 +1357,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
     def _group_set_selected_mask(self, new_y: int):
         if self._updating_group:
             return
+
         self._updating_group = True
         try:
             changed = False
@@ -1369,6 +1381,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
     def _nudge_selected(self, delta: int):
         if self.eeg is None or len(self.mask) == 0:
             return
+
         selected = [p for p in self.mask_points if p.selected]
         if not selected:
             return
@@ -1395,7 +1408,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
             self._dirty = False
         self._update_status_line()
 
-    # ---------------- Status / nav ----------------
+    # ---------------- Status ----------------
     def _update_status_line(self):
         if self.eeg is None or self.path_npy is None:
             self.lbl_status.setText("No file loaded.")
@@ -1441,7 +1454,7 @@ class EEGLabelerWithModel(QtWidgets.QMainWindow):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     pg.setConfigOptions(antialias=True)
-    w = EEGLabelerWithModel()
+    w = EEGLabelerWithModelFusion()
     w.show()
     sys.exit(app.exec())
 
