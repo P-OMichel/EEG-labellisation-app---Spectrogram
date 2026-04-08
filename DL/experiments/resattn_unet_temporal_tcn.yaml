@@ -6,8 +6,8 @@ model:
     tcn_hidden: 128
     tcn_layers: 3
 data:
-  x_spec_path: X_Y_dataset/X_spec_30_03_2026.npy
-  y_path: X_Y_dataset/Y_30_03_2026.npy
+  x_spec_path: X_Y_dataset/X_spec_08_04_2026.npy
+  y_path: X_Y_dataset/Y_08_04_2026.npy
   test_size: 0.2
   val_size: 0.2
 train:

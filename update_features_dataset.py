@@ -14,10 +14,10 @@ from ML.functions.feature_extractor import extract_features_time_series, extract
 #================================ DIRECTORIES =============================
 data_mask_spectro_dir = 'data_mask_spectro/' # path to where labelled data is stored
 
-name_saved_eeg = 'X_eeg_30_03_2026' # suffix of file name where features are stored
-name_saved_spectro = 'X_spec_30_03_2026' # suffix of file name where features are stored
-name_saved_mask = 'Y_30_03_2026' # suffix of file name where features are stored
-name_saved_features = 'X_features_30_03_2026' # suffix of file name where features are stored
+name_saved_eeg = 'X_eeg_08_04_2026' # suffix of file name where features are stored
+name_saved_spectro = 'X_spec_08_04_2026' # suffix of file name where features are stored
+name_saved_mask = 'Y_08_04_2026' # suffix of file name where features are stored
+name_saved_features = 'X_features_08_04_2026' # suffix of file name where features are stored
 
 #================================ Functions =============================
 def load_mask_with_spectrograms(path: str | Path) -> dict:

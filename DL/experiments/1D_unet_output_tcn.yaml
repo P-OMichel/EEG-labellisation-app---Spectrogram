@@ -4,8 +4,8 @@ model:
     num_classes: 10
     base_ch: 32
 data:
-  x_eeg_path: X_Y_dataset/X_eeg_30_03_2026.npy
-  y_path: X_Y_dataset/Y_30_03_2026.npy
+  x_eeg_path: X_Y_dataset/X_eeg_08_04_2026.npy
+  y_path: X_Y_dataset/Y_08_04_2026.npy
   test_size: 0.2
   val_size: 0.2
 train:

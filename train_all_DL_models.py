@@ -21,13 +21,13 @@ for elem in elements:
         except:
             print('did not work')
 
-    # elif 'fusion' not in elem:
-    #     print('2D model', elem)
-    #     sys.argv = ['train_DL_2D.py', '--config', full_path]
-    #     try:
-    #         main_2d()
-    #     except:
-    #         print('did not work')
+    elif 'fusion' not in elem:
+        print('2D model', elem)
+        sys.argv = ['train_DL_2D.py', '--config', full_path]
+        try:
+            main_2d()
+        except:
+            print('did not work')
 
 sys.argv = ['train_fusion.py', '--config', 'DL/runs/fusion_1D_unet_2D_res_attn_32']
 main_fusion()
