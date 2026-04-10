@@ -13,7 +13,7 @@ elements = os.listdir(in_path_prefix)
 for elem in elements:
     full_path = os.path.join(in_path_prefix, elem)
 
-    if '1D' in elem:
+    if '1dsdD' in elem:
         print('1D model', elem)
         sys.argv = ['train_DL_1D.py', '--config', full_path]
         try:

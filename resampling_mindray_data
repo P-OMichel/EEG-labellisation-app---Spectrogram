@@ -1,0 +1,20 @@
+import numpy as np
+from scipy.signal import resample
+
+import os 
+
+fs_original = 250
+fs_target = 128
+
+in_path_prefix = 'anesthesia_database_mindray/' # 'anesthesia_database_Trousseau/'  # 'anesthesia_database/'
+elements = os.listdir(in_path_prefix)
+
+for elem in elements:
+    in_path = in_path_prefix + elem
+    out_path = in_path
+
+    y = np.load(in_path)
+    num_samples_target = int(len(y) * fs_target / fs_original)
+    y_resampled = resample(y, num_samples_target)
+
+    np.save(out_path, y_resampled)

@@ -24,16 +24,7 @@ def spectrogram(
     nfft = int(nfft_factor * nperseg)
     window = sc.signal.windows.hamming(nperseg, sym=True)
 
-    f_spectro, t_spectro, stft = sc.signal.stft(
-        y,
-        fs=fs,
-        window=window,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        nfft=nfft,
-        detrend=detrend,
-        scaling=scaling,
-    )
+    f_spectro, t_spectro, stft = sc.signal.stft(y, fs=fs, window=window,  nperseg=nperseg, noverlap=noverlap, nfft=nfft, detrend=detrend, scaling=scaling)
 
     Sxx = np.abs(stft) ** 2
 
