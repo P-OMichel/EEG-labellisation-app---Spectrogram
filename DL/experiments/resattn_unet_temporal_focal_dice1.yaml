@@ -1,21 +1,21 @@
-model:
-  name: resattn_aniso_unet_temporal_tcn
-  kwargs:
-    num_classes: 10
-    base_ch: 32
 data:
-  x_spec_path: X_Y_dataset/X_spec_08_04_2026.npy
-  y_path: X_Y_dataset/Y_08_04_2026.npy
   test_size: 0.2
   val_size: 0.2
-train:
-  batch_size: 16
-  lr: 0.001
-  epochs: 150
-  early_stop_patience: 20
-  loss:
-    name: focal_dice1
-    kwargs:
-      gamma: 2.0
+  x_spec_path: X_Y_dataset/X_spec_13_04_2026.npy
+  y_path: X_Y_dataset/Y_13_04_2026.npy
+model:
+  kwargs:
+    base_ch: 32
+    num_classes: 10
+  name: resattn_aniso_unet_temporal_tcn
 save:
   out_dir: DL/runs/resattn_aniso_unet_temporal_focaldice1
+train:
+  batch_size: 16
+  early_stop_patience: 20
+  epochs: 150
+  loss:
+    kwargs:
+      gamma: 2.0
+    name: focal_dice1
+  lr: 0.001

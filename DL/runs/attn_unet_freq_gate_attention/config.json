@@ -1,0 +1,9 @@
+{
+  "model": {
+    "kwargs": {
+      "base_ch": 32,
+      "num_classes": 10
+    },
+    "name": "attn_unet_freq_gate_attention"
+  }
+}

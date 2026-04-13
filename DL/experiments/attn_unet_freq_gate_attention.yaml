@@ -1,0 +1,21 @@
+data:
+  test_size: 0.2
+  val_size: 0.2
+  x_spec_path: X_Y_dataset/X_spec_13_04_2026.npy
+  y_path: X_Y_dataset/Y_13_04_2026.npy
+model:
+  kwargs:
+    base_ch: 32
+    num_classes: 10
+  name: attn_unet_freq_gate_attention
+save:
+  out_dir: DL/runs/attn_unet_freq_gate_attention
+train:
+  batch_size: 16
+  early_stop_patience: 15
+  epochs: 120
+  loss:
+    kwargs:
+      gamma: 2.0
+    name: focal_dice
+  lr: 0.001

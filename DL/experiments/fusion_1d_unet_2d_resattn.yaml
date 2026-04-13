@@ -1,45 +1,41 @@
+data:
+  test_size: 0.2
+  val_size: 0.2
+  x_eeg_path: X_Y_dataset/X_eeg_13_04_2026.npy
+  x_spec_path: X_Y_dataset/X_spec_13_04_2026.npy
+  y_path: X_Y_dataset/Y_13_04_2026.npy
 model:
-  name: "fusion_gate"
+  branches:
+    model_1d:
+      config: DL/experiments/1D_unet_bottleneck_tcn.yaml
+      freeze: false
+      lr: 0.0001
+      pretrained: true
+    model_2d:
+      config: DL/experiments/resattn_unet_temporal_focal_dice1.yaml
+      freeze: false
+      lr: 0.0001
+      pretrained: true
   kwargs:
-    num_classes: 10
-    target_len: 297
     feat1d_ch: 32
     feat2d_ch: 32
     fusion_ch: 32
+    num_classes: 10
+    target_len: 297
     use_aux_heads: true
-
-  branches:
-    model_1d:
-      config: 'DL/experiments/1D_unet_bottleneck_tcn.yaml'
-      pretrained: True 
-      freeze: false
-      lr: 0.0001
-
-    model_2d:
-      config: 'DL/experiments/resattn_unet_temporal_focal_dice1.yaml'
-      pretrained: True
-      freeze: false
-      lr: 0.0001
-
-data:
-  x_eeg_path: X_Y_dataset/X_eeg_08_04_2026.npy
-  x_spec_path: X_Y_dataset/X_spec_08_04_2026.npy
-  y_path: X_Y_dataset/Y_08_04_2026.npy
-  test_size: 0.2
-  val_size: 0.2
+  name: fusion_gate
+save:
+  out_dir: DL/runs/fusion_1D_unet_2D_res_attn_32
 train:
-  batch_size: 16
-  lr: 0.001
-  epochs: 150
-  early_stop_patience: 20
-  loss:
-    name: focal_dice1
-    kwargs:
-      gamma: 2.0
   aux_loss:
     use: true
     weight_1d: 0.3
     weight_2d: 0.3
-
-save:
-  out_dir: DL/runs/fusion_1D_unet_2D_res_attn_32
+  batch_size: 16
+  early_stop_patience: 20
+  epochs: 150
+  loss:
+    kwargs:
+      gamma: 2.0
+    name: focal_dice1
+  lr: 0.001

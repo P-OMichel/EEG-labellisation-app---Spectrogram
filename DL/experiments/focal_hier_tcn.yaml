@@ -1,24 +1,24 @@
-model:
-  name: specseg_2dcnn_tcn
-  kwargs:
-    num_classes: 10
-    enc_ch: 128
-    tcn_hidden: 128
-    tcn_layers: 3
 data:
-  x_spec_path: X_Y_dataset/X_spec_08_04_2026.npy
-  y_path: X_Y_dataset/Y_3_03_2026.npy
   test_size: 0.2
   val_size: 0.2
-train:
-  batch_size: 16
-  lr: 0.001
-  epochs: 80
-  early_stop_patience: 12
-  loss:
-    name: hierarchical
-    kwargs:
-      gamma: 2.0
-      bg_class: 0
+  x_spec_path: X_Y_dataset/X_spec_13_04_2026.npy
+  y_path: X_Y_dataset/Y_13_04_2026.npy
+model:
+  kwargs:
+    enc_ch: 128
+    num_classes: 10
+    tcn_hidden: 128
+    tcn_layers: 3
+  name: specseg_2dcnn_tcn
 save:
   out_dir: DL/runs/specseg_2dcnn_tcn_hier
+train:
+  batch_size: 16
+  early_stop_patience: 12
+  epochs: 80
+  loss:
+    kwargs:
+      bg_class: 0
+      gamma: 2.0
+    name: hierarchical
+  lr: 0.001

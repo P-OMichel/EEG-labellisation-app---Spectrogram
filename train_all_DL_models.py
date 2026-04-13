@@ -13,7 +13,7 @@ elements = os.listdir(in_path_prefix)
 for elem in elements:
     full_path = os.path.join(in_path_prefix, elem)
 
-    if '1dsdD' in elem:
+    if '1D' in elem:
         print('1D model', elem)
         sys.argv = ['train_DL_1D.py', '--config', full_path]
         try:
@@ -21,13 +21,13 @@ for elem in elements:
         except:
             print('did not work')
 
-    elif 'fusion' not in elem:
-        print('2D model', elem)
-        sys.argv = ['train_DL_2D.py', '--config', full_path]
-        try:
-            main_2d()
-        except:
-            print('did not work')
+    # elif 'fusion' not in elem:
+    #     print('2D model', elem)
+    #     sys.argv = ['train_DL_2D.py', '--config', full_path]
+    #     try:
+    #         main_2d()
+    #     except:
+    #         print('did not work')
 
 sys.argv = ['train_fusion.py', '--config', 'DL/runs/fusion_1D_unet_2D_res_attn_32']
 main_fusion()

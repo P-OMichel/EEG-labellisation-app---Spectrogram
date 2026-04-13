@@ -116,9 +116,9 @@ for elem in elements:
         # create mask with annotations and add spectrogram
         enrich_mask_with_spectrograms(in_path, out_path)
 
-print('All files have been processed')
+print(f'All files have been processed in {in_path_prefix}')
 
-in_path_prefix = 'anesthesia_database/' # 'anesthesia_database_Trousseau/'  # 'anesthesia_database/'
+in_path_prefix = 'anesthesia_database/' 
 elements = os.listdir(in_path_prefix)
 
 for elem in elements:
@@ -128,66 +128,16 @@ for elem in elements:
         # create mask with annotations and add spectrogram
         enrich_mask_with_spectrograms(in_path, out_path)
 
-print('All files have been processed')
+print(f'All files have been processed in {in_path_prefix}')
 
-# #------------------------------------------------------------------------------------------------------------- 
-# # Update dataset
-# #------------------------------------------------------------------------------------------------------------- 
+in_path_prefix = 'anesthesia_database_mindray/' # 'anesthesia_database_Trousseau/'  # 'anesthesia_database/'
+elements = os.listdir(in_path_prefix)
 
-# def load_mask_with_spectrograms(path: str | Path) -> dict:
-#     path = Path(path)
-#     with path.open("r", encoding="utf-8") as f:
-#         return json.load(f)
+for elem in elements:
+    if 'mask' in elem:
+        in_path = in_path_prefix + elem
+        out_path = 'data_mask_spectro/' + elem[:-10] + '_mask_spectro.json'
+        # create mask with annotations and add spectrogram
+        enrich_mask_with_spectrograms(in_path, out_path)
 
-# # List all elements (files and folders)
-# elements = os.listdir('data_mask_spectro/')
-
-# X_eeg =  []
-# X_spec = []
-# Y = []
-
-# for elem in elements:
-#     if '.json' in elem:
-#         # load masks and spectrogram
-#         data = load_mask_with_spectrograms('data_mask_spectro/' + elem)
-#         # load recording (use try except since can be from 2 different folders)
-#         try:
-#             y = np.load('anesthesia_database/' + data['recording'])
-#         except:
-#             y = np.load('anesthesia_database_Trousseau/' + data['recording'])
-#         # load window key names
-#         list_windows_keys = list(data['windows'].keys())
-#         # iterate over all windows
-#         for i in range(len(data['windows'])):
-#             current_window = data['windows'][list_windows_keys[i]]
-#             start_s = float(current_window["window_start_s"])
-#             end_s = float(current_window["window_end_s"])
-#             fs = int(current_window["fs_hz"])
-
-#             start_i = int(round(start_s * fs))
-#             end_i = int(round(end_s * fs))
-
-#             signal = y[start_i : end_i]
-#             t_signal = np.arange(len(signal)) / fs
-
-#             mask = current_window['mask']
-
-#             t_spec = current_window['t_spec']
-#             f_spec = current_window['f_spec']
-#             spec = np.array(current_window['spectrogram'])
-
-#             X_eeg.append(signal)
-#             X_spec.append(spec)
-#             Y.append(mask)
-
-
-# #--- convert to np arrays
-# X_eeg = np.array(X_eeg)
-# X_spec = np.array(X_spec)
-# Y = np.array(Y)
-
-# np.save('X_Y_dataset/X_eeg', X_eeg)
-# np.save('X_Y_dataset/X_spec', X_spec)
-# np.save('X_Y_dataset/Y', Y)
-
-# print('Dataset updated')
+print(f'All files have been processed in {in_path_prefix}')

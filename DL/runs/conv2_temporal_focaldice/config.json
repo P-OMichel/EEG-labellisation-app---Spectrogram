@@ -1,9 +1,9 @@
 {
   "model": {
-    "name": "conv2_temporal",
     "kwargs": {
-      "num_classes": 10,
-      "enc_ch": 128
-    }
+      "enc_ch": 128,
+      "num_classes": 10
+    },
+    "name": "conv2_temporal"
   }
 }

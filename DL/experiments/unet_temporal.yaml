@@ -1,21 +1,21 @@
-model:
-  name: unet_temporal
-  kwargs:
-    num_classes: 10
-    base_ch: 32
 data:
-  x_spec_path: X_Y_dataset/X_spec_08_04_2026.npy
-  y_path: X_Y_dataset/Y_08_04_2026.npy
   test_size: 0.2
   val_size: 0.2
-train:
-  batch_size: 16
-  lr: 0.001
-  epochs: 120
-  early_stop_patience: 15
-  loss:
-    name: focal_dice
-    kwargs:
-      gamma: 2.0
+  x_spec_path: X_Y_dataset/X_spec_13_04_2026.npy
+  y_path: X_Y_dataset/Y_13_04_2026.npy
+model:
+  kwargs:
+    base_ch: 32
+    num_classes: 10
+  name: unet_temporal
 save:
   out_dir: DL/runs/unet_temporal_focaldice
+train:
+  batch_size: 16
+  early_stop_patience: 15
+  epochs: 120
+  loss:
+    kwargs:
+      gamma: 2.0
+    name: focal_dice
+  lr: 0.001

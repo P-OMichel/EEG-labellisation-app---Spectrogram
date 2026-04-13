@@ -14,10 +14,10 @@ from ML.functions.feature_extractor import extract_features_time_series, extract
 #================================ DIRECTORIES =============================
 data_mask_spectro_dir = 'data_mask_spectro/' # path to where labelled data is stored
 
-name_saved_eeg = 'X_eeg_08_04_2026' # suffix of file name where features are stored
-name_saved_spectro = 'X_spec_08_04_2026' # suffix of file name where features are stored
-name_saved_mask = 'Y_08_04_2026' # suffix of file name where features are stored
-name_saved_features = 'X_features_08_04_2026' # suffix of file name where features are stored
+name_saved_eeg = 'X_eeg_13_04_2026' # suffix of file name where features are stored
+name_saved_spectro = 'X_spec_13_04_2026_cropped' # suffix of file name where features are stored
+name_saved_mask = 'Y_13_04_2026' # suffix of file name where features are stored
+name_saved_features = 'X_features_13_04_2026' # suffix of file name where features are stored
 
 #================================ Functions =============================
 def load_mask_with_spectrograms(path: str | Path) -> dict:
@@ -40,7 +40,10 @@ def convert_labelled_data_to_dataset(dir):
             try:
                 y = np.load('anesthesia_database/' + data['recording'])
             except:
-                y = np.load('anesthesia_database_Trousseau/' + data['recording'])
+                try:
+                    y = np.load('anesthesia_database_Trousseau/' + data['recording'])
+                except:
+                    y = np.load('anesthesia_database_mindray/' + data['recording'])
             # load window key names
             list_windows_keys = list(data['windows'].keys())
             # iterate over all windows

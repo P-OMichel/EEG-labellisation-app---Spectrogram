@@ -71,7 +71,7 @@ def fit(
     #class_weights = class_weights.to(device) # weigths , loss and model should be on same device. not necessary to do this line if registered as buffer either manually (focal loss) or automatically (ce option) | if stored as buffer it will be saved in the state_dict. 
     loss_fn = build_loss(cfg["train"]["loss"], num_classes=num_classes, class_weights=class_weights).to(device)
     model.to(device)
-    optim = torch.optim.Adam(model.parameters(), lr=float(cfg["train"].get("lr", 1e-3)))
+    optim = torch.optim.Adam(model.parameters(), lr=float(cfg["train"].get("lr", 1e-3)), weight_decay = 1e-5)
     epochs = int(cfg["train"].get("epochs", 50))
     patience = int(cfg["train"].get("early_stop_patience", 10))
 

@@ -14,7 +14,7 @@ from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
 # NOTE:   Import model modules so they register themselves| if not registered load config will not work
-from DL.src.models import specseg_cnn, unet_temporal, resattn_unet, conv2_temporal_head, resattn_unet_tcn  
+from DL.src.models import specseg_cnn, unet_temporal, resattn_unet, conv2_temporal_head, resattn_unet_tcn, unet_freq_gate_attention, attn_unet_freq_gate_attention
 
 
 def load_config(path: str) -> dict:
@@ -154,6 +154,13 @@ def main():
     X_train = np.log1p(X_train + 0.00000000001)
     X_val   = np.log1p(X_val + 0.00000000001)
     X_test  = np.log1p(X_test + 0.00000000001)
+
+    # X_train = np.log2(X_train + 0.00000000001)
+    # X_val   = np.log2(X_val + 0.00000000001)
+    # X_test  = np.log2(X_test + 0.00000000001)
+    # X_train = np.clip(X_train, -10, 10)
+    # X_val = np.clip(X_val, -10, 10)
+    # X_test = np.clip(X_test, -10, 10)
 
     # ---- Normalize (dataset-level) ----
     stats = compute_norm_stats(X_train)

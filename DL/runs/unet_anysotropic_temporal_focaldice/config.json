@@ -1,9 +1,9 @@
 {
   "model": {
-    "name": "unet_anysotropic_temporal",
     "kwargs": {
-      "num_classes": 10,
-      "base_ch": 32
-    }
+      "base_ch": 32,
+      "num_classes": 10
+    },
+    "name": "unet_anysotropic_temporal"
   }
 }
